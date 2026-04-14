@@ -499,18 +499,115 @@ function ConvertTo-PrettyHtmlReport {
     tbody tr:hover {
         background: rgba(96, 165, 250, 0.06);
     }
-    .pill {
-        display: inline-block;
-        padding: 5px 10px;
-        border-radius: 999px;
-        font-weight: 700;
-        font-size: 12px;
-        white-space: nowrap;
+    tbody tr.selected-row {
+        background: rgba(96, 165, 250, 0.12);
+        outline: 1px solid rgba(96, 165, 250, 0.35);
     }
-    .healthy { background: rgba(34,197,94,0.15); color: #86efac; border: 1px solid rgba(34,197,94,0.35); }
-    .warning { background: rgba(245,158,11,0.15); color: #fcd34d; border: 1px solid rgba(245,158,11,0.35); }
-    .attention { background: rgba(239,68,68,0.15); color: #fca5a5; border: 1px solid rgba(239,68,68,0.35); }
-    .muted { color: var(--muted); }
+    .clickable-row {
+        cursor: pointer;
+    }
+    .panel-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.45);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.18s ease;
+        z-index: 20;
+    }
+    .panel-overlay.open {
+        opacity: 1;
+        pointer-events: auto;
+    }
+    .side-panel {
+        position: fixed;
+        top: 0;
+        right: 0;
+        width: min(520px, 96vw);
+        height: 100vh;
+        background: #0f1728;
+        border-left: 1px solid var(--line);
+        box-shadow: -14px 0 34px rgba(0,0,0,0.35);
+        transform: translateX(100%);
+        transition: transform 0.22s ease;
+        z-index: 21;
+        display: flex;
+        flex-direction: column;
+    }
+    .side-panel.open {
+        transform: translateX(0);
+    }
+    .panel-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 20px 20px 14px 20px;
+        border-bottom: 1px solid var(--line);
+        background: #121c31;
+    }
+    .panel-title h2 {
+        margin: 0 0 8px 0;
+        font-size: 24px;
+    }
+    .panel-title p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 13px;
+    }
+    .panel-close {
+        min-width: 42px;
+        padding: 10px 12px;
+    }
+    .panel-body {
+        overflow: auto;
+        padding: 18px 20px 24px 20px;
+    }
+    .panel-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 16px;
+    }
+    .detail-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+    }
+    .detail-card {
+        background: rgba(24, 34, 53, 0.88);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 14px;
+    }
+    .detail-card.full {
+        grid-column: 1 / -1;
+    }
+    .detail-label {
+        color: var(--muted);
+        font-size: 12px;
+        margin-bottom: 8px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+    .detail-value {
+        font-size: 15px;
+        line-height: 1.45;
+        word-break: break-word;
+    }
+    .kv {
+        display: grid;
+        grid-template-columns: 135px 1fr;
+        gap: 8px 12px;
+    }
+    .kv .k {
+        color: var(--muted);
+        font-size: 13px;
+    }
+    .kv .v {
+        font-size: 13px;
+        word-break: break-word;
+    }
     .footer {
         margin-top: 12px;
         color: var(--muted);
@@ -527,6 +624,13 @@ function ConvertTo-PrettyHtmlReport {
         }
         .title h1 {
             font-size: 24px;
+        }
+        .detail-grid {
+            grid-template-columns: 1fr;
+        }
+        .kv {
+            grid-template-columns: 1fr;
+            gap: 4px;
         }
     }
 </style>
@@ -617,13 +721,39 @@ function ConvertTo-PrettyHtmlReport {
     </div>
 
     <div class="footer">
-        Buttons export the currently visible filtered data. Excel export creates an Excel-openable .xls file from the filtered table.
+        Buttons export the currently visible filtered data. Click any device row to open the side panel for a cleaner view.
+    </div>
+</div>
+
+<div id="panelOverlay" class="panel-overlay" onclick="closeSidePanel()"></div>
+<div id="sidePanel" class="side-panel" aria-hidden="true">
+    <div class="panel-header">
+        <div class="panel-title">
+            <h2 id="panelComputerName">Device Details</h2>
+            <p id="panelSubtext">Select a row to view full device information.</p>
+        </div>
+        <button class="panel-close" onclick="closeSidePanel()">✕</button>
+    </div>
+    <div class="panel-body">
+        <div class="panel-actions">
+            <button onclick="copyPanelField('ComputerName')">Copy hostname</button>
+            <button onclick="copyPanelField('IPv4')">Copy IP</button>
+            <button onclick="copyPanelField('LoggedOnUser')">Copy user</button>
+            <button onclick="copyCurrentDeviceJson()">Copy JSON</button>
+        </div>
+        <div id="panelContent" class="detail-grid">
+            <div class="detail-card full">
+                <div class="detail-label">No device selected</div>
+                <div class="detail-value">Click a device row in the table to open its details here.</div>
+            </div>
+        </div>
     </div>
 </div>
 
 <script>
 const rawData = $jsonEscaped;
 let filteredData = [...rawData];
+let selectedDevice = null;
 
 function esc(value) {
     if (value === null || value === undefined) return '';
@@ -660,8 +790,10 @@ function healthOrder(status) {
 
 function renderTable(data) {
     const body = document.getElementById('tableBody');
-    body.innerHTML = data.map(item => `
-        <tr>
+    body.innerHTML = data.map(item => {
+        const selectedClass = selectedDevice && selectedDevice.ComputerName === item.ComputerName ? 'selected-row' : '';
+        return `
+        <tr class="clickable-row ${selectedClass}" onclick="openSidePanelByName('${esc(item.ComputerName).replace(/'/g, '&#39;')}')">
             <td>${esc(item.ComputerName)}</td>
             <td><span class="${statusClass(item.HealthStatus)}">${esc(item.HealthStatus)}</span></td>
             <td>${esc(item.HealthIssues)}</td>
@@ -691,7 +823,7 @@ function renderTable(data) {
             <td>${esc(item.SerialNumber)}</td>
             <td>${esc(item.Error)}</td>
         </tr>
-    `).join('');
+    `}).join('');
 }
 
 function applyFilters() {
@@ -717,8 +849,119 @@ function applyFilters() {
         return String(av).localeCompare(String(bv));
     });
 
+    if (selectedDevice) {
+        const stillVisible = filteredData.find(x => x.ComputerName === selectedDevice.ComputerName);
+        if (!stillVisible) {
+            selectedDevice = null;
+            closeSidePanel();
+        } else {
+            selectedDevice = stillVisible;
+            renderSidePanel(selectedDevice);
+        }
+    }
+
     renderTable(filteredData);
 }
+
+function openSidePanelByName(name) {
+    const device = filteredData.find(x => x.ComputerName === name) || rawData.find(x => x.ComputerName === name);
+    if (!device) return;
+    selectedDevice = device;
+    renderSidePanel(device);
+    document.getElementById('panelOverlay').classList.add('open');
+    const panel = document.getElementById('sidePanel');
+    panel.classList.add('open');
+    panel.setAttribute('aria-hidden', 'false');
+    renderTable(filteredData);
+}
+
+function closeSidePanel() {
+    document.getElementById('panelOverlay').classList.remove('open');
+    const panel = document.getElementById('sidePanel');
+    panel.classList.remove('open');
+    panel.setAttribute('aria-hidden', 'true');
+    renderTable(filteredData);
+}
+
+function detailCard(title, value, full = false) {
+    return `<div class="detail-card ${full ? 'full' : ''}"><div class="detail-label">${esc(title)}</div><div class="detail-value">${esc(value ?? '')}</div></div>`;
+}
+
+function kvRow(label, value) {
+    return `<div class="k">${esc(label)}</div><div class="v">${esc(value ?? '')}</div>`;
+}
+
+function renderSidePanel(device) {
+    document.getElementById('panelComputerName').textContent = device.ComputerName || 'Device Details';
+    document.getElementById('panelSubtext').textContent = `${device.OS || 'Unknown OS'} • ${device.IPv4 || 'No IP found'}`;
+
+    const healthBadge = `<span class="${statusClass(device.HealthStatus)}">${esc(device.HealthStatus)}</span>`;
+    const content = `
+        <div class="detail-card full">
+            <div class="detail-label">Health</div>
+            <div class="detail-value">${healthBadge}<div style="margin-top:10px">${esc(device.HealthIssues)}</div></div>
+        </div>
+        <div class="detail-card full">
+            <div class="detail-label">Quick Summary</div>
+            <div class="kv">
+                ${kvRow('Reachable', device.Reachable)}
+                ${kvRow('CIM Session', device.CimSession)}
+                ${kvRow('Logged On User', device.LoggedOnUser)}
+                ${kvRow('Uptime', device.Uptime)}
+                ${kvRow('IPv4', device.IPv4)}
+                ${kvRow('Error', device.Error || 'None')}
+            </div>
+        </div>
+        ${detailCard('Operating System', `${device.OS || ''} ${device.Version || ''} (Build ${device.BuildNumber || ''})`, true)}
+        ${detailCard('Hardware', `${device.Manufacturer || ''} ${device.Model || ''}`, false)}
+        ${detailCard('Serial Number', device.SerialNumber, false)}
+        ${detailCard('CPU', device.CPU, true)}
+        ${detailCard('RAM (GB)', device.RAMGB, false)}
+        ${detailCard('C: Total (GB)', device.DiskC_TotalGB, false)}
+        ${detailCard('C: Free (GB)', device.DiskC_FreeGB, false)}
+        ${detailCard('C: Free %', device.DiskC_FreePercent, false)}
+        ${detailCard('Antivirus', device.Antivirus, true)}
+        ${detailCard('Defender Realtime', device.DefenderRealtime, false)}
+        ${detailCard('Last Hotfix', device.LastHotfixId, false)}
+        ${detailCard('Last Hotfix Date', device.LastHotfixDate, false)}
+        ${detailCard('Pending Reboot Signals', device.PendingRebootSignals, false)}
+        ${detailCard('Installed Software Count', device.InstalledSoftwareCount, false)}
+        ${detailCard('RDP Open', device.RdpOpen, false)}
+        ${detailCard('WinRM Open', device.WinRMOpen, false)}
+    `;
+
+    document.getElementById('panelContent').innerHTML = content;
+}
+
+function copyPanelField(field) {
+    if (!selectedDevice) {
+        alert('No device selected.');
+        return;
+    }
+    navigator.clipboard.writeText(String(selectedDevice[field] ?? '')).then(() => {
+        alert(`${field} copied.`);
+    }).catch(() => {
+        alert('Clipboard copy failed in this browser.');
+    });
+}
+
+function copyCurrentDeviceJson() {
+    if (!selectedDevice) {
+        alert('No device selected.');
+        return;
+    }
+    navigator.clipboard.writeText(JSON.stringify(selectedDevice, null, 2)).then(() => {
+        alert('Selected device JSON copied.');
+    }).catch(() => {
+        alert('Clipboard copy failed in this browser.');
+    });
+}
+
+document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+        closeSidePanel();
+    }
+});
 
 function rowsToCsv(rows) {
     const headers = [
