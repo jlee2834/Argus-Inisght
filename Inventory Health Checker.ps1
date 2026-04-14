@@ -583,6 +583,67 @@ function ConvertTo-PrettyHtmlReport {
     .detail-card.full {
         grid-column: 1 / -1;
     }
+    .section-card {
+        grid-column: 1 / -1;
+        background: rgba(24, 34, 53, 0.72);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        overflow: hidden;
+    }
+    .section-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 14px 16px;
+        border-bottom: 1px solid rgba(41,54,83,0.75);
+    }
+    .section-title {
+        font-size: 15px;
+        font-weight: 700;
+        letter-spacing: 0.01em;
+    }
+    .section-subtitle {
+        color: var(--muted);
+        font-size: 12px;
+    }
+    .section-content {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        padding: 14px;
+    }
+    .section-card.health-overview {
+        border-color: rgba(96, 165, 250, 0.35);
+        background: rgba(20, 32, 58, 0.9);
+    }
+    .section-card.health-healthy {
+        border-color: rgba(34,197,94,0.38);
+        background: linear-gradient(180deg, rgba(10,40,24,0.9), rgba(18,26,43,0.92));
+    }
+    .section-card.health-warning {
+        border-color: rgba(245,158,11,0.4);
+        background: linear-gradient(180deg, rgba(56,35,5,0.92), rgba(18,26,43,0.92));
+    }
+    .section-card.health-attention {
+        border-color: rgba(239,68,68,0.42);
+        background: linear-gradient(180deg, rgba(60,17,17,0.94), rgba(18,26,43,0.92));
+    }
+    .section-card.section-overview {
+        border-left: 4px solid rgba(96,165,250,0.85);
+    }
+    .section-card.section-hardware {
+        border-left: 4px solid rgba(168,85,247,0.85);
+    }
+    .section-card.section-security {
+        border-left: 4px solid rgba(34,197,94,0.85);
+    }
+    .section-card.section-patching {
+        border-left: 4px solid rgba(245,158,11,0.9);
+    }
+    .section-card.section-connectivity {
+        border-left: 4px solid rgba(59,130,246,0.9);
+    }
     .detail-label {
         color: var(--muted);
         font-size: 12px;
@@ -626,6 +687,9 @@ function ConvertTo-PrettyHtmlReport {
             font-size: 24px;
         }
         .detail-grid {
+            grid-template-columns: 1fr;
+        }
+        .section-content {
             grid-template-columns: 1fr;
         }
         .kv {
@@ -721,7 +785,7 @@ function ConvertTo-PrettyHtmlReport {
     </div>
 
     <div class="footer">
-        Buttons export the currently visible filtered data. Click any device row to open the side panel for a cleaner view. Created by jlee2834 (https://github.com/jlee2834)
+        Buttons export the currently visible filtered data. Click any device row to open the side panel for a cleaner view. Created and maintained by jlee2834 (https://github.com/jlee2834)
     </div>
 </div>
 
@@ -891,43 +955,130 @@ function kvRow(label, value) {
     return `<div class="k">${esc(label)}</div><div class="v">${esc(value ?? '')}</div>`;
 }
 
+function sectionCard(cssClass, title, subtitle, innerHtml) {
+    return `
+        <section class="section-card ${cssClass}">
+            <div class="section-header">
+                <div>
+                    <div class="section-title">${esc(title)}</div>
+                    <div class="section-subtitle">${esc(subtitle)}</div>
+                </div>
+            </div>
+            <div class="section-content">
+                ${innerHtml}
+            </div>
+        </section>
+    `;
+}
+
+function getHealthSectionClass(status) {
+    if (status === 'Healthy') return 'health-healthy';
+    if (status === 'Warning') return 'health-warning';
+    return 'health-attention';
+}
+
 function renderSidePanel(device) {
     document.getElementById('panelComputerName').textContent = device.ComputerName || 'Device Details';
     document.getElementById('panelSubtext').textContent = `${device.OS || 'Unknown OS'} • ${device.IPv4 || 'No IP found'}`;
 
     const healthBadge = `<span class="${statusClass(device.HealthStatus)}">${esc(device.HealthStatus)}</span>`;
-    const content = `
-        <div class="detail-card full">
-            <div class="detail-label">Health</div>
-            <div class="detail-value">${healthBadge}<div style="margin-top:10px">${esc(device.HealthIssues)}</div></div>
-        </div>
-        <div class="detail-card full">
-            <div class="detail-label">Quick Summary</div>
-            <div class="kv">
-                ${kvRow('Reachable', device.Reachable)}
-                ${kvRow('CIM Session', device.CimSession)}
-                ${kvRow('Logged On User', device.LoggedOnUser)}
-                ${kvRow('Uptime', device.Uptime)}
-                ${kvRow('IPv4', device.IPv4)}
-                ${kvRow('Error', device.Error || 'None')}
+    const healthClass = getHealthSectionClass(device.HealthStatus);
+
+    const overviewSection = sectionCard(
+        'section-overview',
+        'Overview',
+        'Primary device summary',
+        `
+            <div class="detail-card full">
+                <div class="detail-label">Device Summary</div>
+                <div class="kv">
+                    ${kvRow('Computer Name', device.ComputerName)}
+                    ${kvRow('Logged On User', device.LoggedOnUser)}
+                    ${kvRow('Reachable', device.Reachable)}
+                    ${kvRow('CIM Session', device.CimSession)}
+                    ${kvRow('Uptime', device.Uptime)}
+                    ${kvRow('Operating System', `${device.OS || ''} ${device.Version || ''}`.trim())}
+                </div>
             </div>
-        </div>
-        ${detailCard('Operating System', `${device.OS || ''} ${device.Version || ''} (Build ${device.BuildNumber || ''})`, true)}
-        ${detailCard('Hardware', `${device.Manufacturer || ''} ${device.Model || ''}`, false)}
-        ${detailCard('Serial Number', device.SerialNumber, false)}
-        ${detailCard('CPU', device.CPU, true)}
-        ${detailCard('RAM (GB)', device.RAMGB, false)}
-        ${detailCard('C: Total (GB)', device.DiskC_TotalGB, false)}
-        ${detailCard('C: Free (GB)', device.DiskC_FreeGB, false)}
-        ${detailCard('C: Free %', device.DiskC_FreePercent, false)}
-        ${detailCard('Antivirus', device.Antivirus, true)}
-        ${detailCard('Defender Realtime', device.DefenderRealtime, false)}
-        ${detailCard('Last Hotfix', device.LastHotfixId, false)}
-        ${detailCard('Last Hotfix Date', device.LastHotfixDate, false)}
-        ${detailCard('Pending Reboot Signals', device.PendingRebootSignals, false)}
-        ${detailCard('Installed Software Count', device.InstalledSoftwareCount, false)}
-        ${detailCard('RDP Open', device.RdpOpen, false)}
-        ${detailCard('WinRM Open', device.WinRMOpen, false)}
+        `
+    );
+
+    const hardwareSection = sectionCard(
+        'section-hardware',
+        'Hardware',
+        'System identity and physical resources',
+        `
+            ${detailCard('Manufacturer', device.Manufacturer)}
+            ${detailCard('Model', device.Model)}
+            ${detailCard('Serial Number', device.SerialNumber)}
+            ${detailCard('Architecture', device.Architecture)}
+            ${detailCard('CPU', device.CPU, true)}
+            ${detailCard('RAM (GB)', device.RAMGB)}
+            ${detailCard('C: Total (GB)', device.DiskC_TotalGB)}
+            ${detailCard('C: Free (GB)', device.DiskC_FreeGB)}
+            ${detailCard('C: Free %', device.DiskC_FreePercent)}
+        `
+    );
+
+    const securitySection = sectionCard(
+        'section-security',
+        'Security',
+        'Protection state and exposure checks',
+        `
+            ${detailCard('Health State', device.HealthStatus)}
+            ${detailCard('Health Issues', device.HealthIssues, true)}
+            ${detailCard('Antivirus', device.Antivirus, true)}
+            ${detailCard('Defender Realtime', device.DefenderRealtime)}
+            ${detailCard('Installed Software Count', device.InstalledSoftwareCount)}
+            ${detailCard('Collection Error', device.Error || 'None', true)}
+        `
+    );
+
+    const patchingSection = sectionCard(
+        'section-patching',
+        'Patching',
+        'Update visibility and reboot indicators',
+        `
+            ${detailCard('Last Hotfix ID', device.LastHotfixId)}
+            ${detailCard('Last Hotfix Date', device.LastHotfixDate)}
+            ${detailCard('Pending Reboot Signals', device.PendingRebootSignals)}
+            ${detailCard('Build Number', device.BuildNumber)}
+        `
+    );
+
+    const connectivitySection = sectionCard(
+        'section-connectivity',
+        'Connectivity',
+        'Network addressing and remote access exposure',
+        `
+            ${detailCard('IPv4', device.IPv4, true)}
+            ${detailCard('RDP Open', device.RdpOpen)}
+            ${detailCard('WinRM Open', device.WinRMOpen)}
+            ${detailCard('Last Boot Time', device.LastBoot, true)}
+        `
+    );
+
+    const content = `
+        <section class="section-card health-overview ${healthClass}">
+            <div class="section-header">
+                <div>
+                    <div class="section-title">Health Overview</div>
+                    <div class="section-subtitle">Immediate status and issue summary</div>
+                </div>
+                <div>${healthBadge}</div>
+            </div>
+            <div class="section-content">
+                <div class="detail-card full">
+                    <div class="detail-label">Current Condition</div>
+                    <div class="detail-value">${esc(device.HealthIssues)}</div>
+                </div>
+            </div>
+        </section>
+        ${overviewSection}
+        ${hardwareSection}
+        ${securitySection}
+        ${patchingSection}
+        ${connectivitySection}
     `;
 
     document.getElementById('panelContent').innerHTML = content;
