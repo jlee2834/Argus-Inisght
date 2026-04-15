@@ -107,11 +107,15 @@ function Get-HealthStatus {
         $issues.Add('Defender real-time protection off or unavailable')
     }
 
-    # FIX #4: Use $null check instead of .HasValue for broader compatibility
     if ($null -ne $LastHotfixDate) {
-        $daysSincePatch = ((Get-Date) - [datetime]$LastHotfixDate).Days
-        if ($daysSincePatch -gt 45) {
-            $issues.Add('Patch age over 45 days')
+        try {
+            $daysSincePatch = ((Get-Date) - [datetime]$LastHotfixDate).Days
+            if ($daysSincePatch -gt 45) {
+                $issues.Add('Patch age over 45 days')
+            }
+        }
+        catch {
+            $issues.Add('Patch date unavailable')
         }
     }
     else {
@@ -141,8 +145,8 @@ function Get-PendingRebootSignals {
 
     $signals = 0
     $paths = @(
-        'SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Component Based Servicing\\RebootPending',
-        'SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\WindowsUpdate\\Auto Update\\RebootRequired'
+        'SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending',
+        'SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired'
     )
 
     try {
@@ -155,7 +159,7 @@ function Get-PendingRebootSignals {
             }
         }
 
-        $sessionManager = $base.OpenSubKey('SYSTEM\\CurrentControlSet\\Control\\Session Manager')
+        $sessionManager = $base.OpenSubKey('SYSTEM\CurrentControlSet\Control\Session Manager')
         if ($sessionManager) {
             $pending = $sessionManager.GetValue('PendingFileRenameOperations', $null)
             if ($pending) {
@@ -177,8 +181,8 @@ function Get-InstalledSoftwareCount {
 
     $count = 0
     $paths = @(
-        'SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall',
-        'SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall'
+        'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
+        'SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
     )
 
     try {
@@ -283,7 +287,6 @@ function Get-RemoteInventory {
         }
         $result.IPv4 = ($ipv4List | Sort-Object -Unique) -join ', '
 
-        # FIX #6: Guard Invoke-Command with WinRM availability check
         if ($result.WinRMOpen) {
             try {
                 $defender = Invoke-Command -ComputerName $Computer -ScriptBlock {
@@ -336,7 +339,6 @@ function Get-RemoteInventory {
         }
     }
 
-    # FIX #2: Replaced ?? operator with PS 5.1-compatible if/else
     $diskFreePercent = if ($null -ne $result.DiskC_FreePercent) { [double]$result.DiskC_FreePercent } else { 0.0 }
 
     $health = Get-HealthStatus `
@@ -361,22 +363,21 @@ function ConvertTo-PrettyHtmlReport {
         [Parameter(Mandatory)][string]$ExcelFileName
     )
 
-    $json        = $Data | ConvertTo-Json -Depth 6 -Compress
+    $json = $Data | ConvertTo-Json -Depth 6 -Compress
     $jsonEscaped = $json.Replace('</script>', '<\/script>')
-    $generated   = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
-    $total       = @($Data).Count
-    $healthy     = @($Data | Where-Object { $_.HealthStatus -eq 'Healthy' }).Count
-    $warning     = @($Data | Where-Object { $_.HealthStatus -eq 'Warning' }).Count
-    $attention   = @($Data | Where-Object { $_.HealthStatus -eq 'Needs Attention' }).Count
+    $generated = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
+    $total = @($Data).Count
+    $healthy = @($Data | Where-Object { $_.HealthStatus -eq 'Healthy' }).Count
+    $warning = @($Data | Where-Object { $_.HealthStatus -eq 'Warning' }).Count
+    $attention = @($Data | Where-Object { $_.HealthStatus -eq 'Needs Attention' }).Count
 
-    # FIX #1: Removed the broken/stray return @'...'@ block; single clean here-string below
-    return @"
+    $html = @'
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>$Title</title>
+<title>__TITLE__</title>
 <style>
     :root {
         --bg: #0b1220;
@@ -517,7 +518,6 @@ function ConvertTo-PrettyHtmlReport {
     .clickable-row {
         cursor: pointer;
     }
-    /* FIX #3: Added missing pill CSS classes used by statusClass() in JS */
     .pill {
         display: inline-block;
         padding: 3px 10px;
@@ -734,8 +734,8 @@ function ConvertTo-PrettyHtmlReport {
 <div class="wrap">
     <div class="topbar">
         <div class="title">
-            <h1>$Title</h1>
-            <p>Generated: $generated</p>
+            <h1>__TITLE__</h1>
+            <p>Generated: __GENERATED__</p>
         </div>
         <div class="actions">
             <button onclick="copyVisibleTable()">Copy visible table</button>
@@ -747,10 +747,10 @@ function ConvertTo-PrettyHtmlReport {
     </div>
 
     <div class="cards">
-        <div class="card"><div class="label">Total devices</div><div class="value">$total</div></div>
-        <div class="card"><div class="label">Healthy</div><div class="value">$healthy</div></div>
-        <div class="card"><div class="label">Warning</div><div class="value">$warning</div></div>
-        <div class="card"><div class="label">Needs Attention</div><div class="value">$attention</div></div>
+        <div class="card"><div class="label">Total devices</div><div class="value">__TOTAL__</div></div>
+        <div class="card"><div class="label">Healthy</div><div class="value">__HEALTHY__</div></div>
+        <div class="card"><div class="label">Warning</div><div class="value">__WARNING__</div></div>
+        <div class="card"><div class="label">Needs Attention</div><div class="value">__ATTENTION__</div></div>
     </div>
 
     <div class="controls">
@@ -816,7 +816,7 @@ function ConvertTo-PrettyHtmlReport {
     </div>
 
     <div class="footer">
-        Buttons export the currently visible filtered data. Click any device row to open the side panel for a cleaner view. Created and maintained by jlee2834 (https://github.com/jlee2834)
+        Buttons export the currently visible filtered data. Click any device row to open the side panel for a cleaner view. Created and maintained by jlee2834.
     </div>
 </div>
 
@@ -846,7 +846,7 @@ function ConvertTo-PrettyHtmlReport {
 </div>
 
 <script>
-const rawData = $jsonEscaped;
+const rawData = __JSON_DATA__;
 let filteredData = [...rawData];
 let selectedDevice = null;
 
@@ -1010,7 +1010,7 @@ function getHealthSectionClass(status) {
 
 function renderSidePanel(device) {
     document.getElementById('panelComputerName').textContent = device.ComputerName || 'Device Details';
-document.getElementById('panelSubtext').textContent = `${device.OS || 'Unknown OS'} • ${device.IPv4 || 'No IP found'}`;
+    document.getElementById('panelSubtext').textContent = `${device.OS || 'Unknown OS'} • ${device.IPv4 || 'No IP found'}`;
 
     const healthBadge = `<span class="${statusClass(device.HealthStatus)}">${esc(device.HealthStatus)}</span>`;
     const healthClass = getHealthSectionClass(device.HealthStatus);
@@ -1023,12 +1023,12 @@ document.getElementById('panelSubtext').textContent = `${device.OS || 'Unknown O
             <div class="detail-card full">
                 <div class="detail-label">Device Summary</div>
                 <div class="kv">
-                    `${kvRow('Computer Name', device.ComputerName)}`
-                    `${kvRow('Logged On User', device.LoggedOnUser)}`
-                    `${kvRow('Reachable', device.Reachable)}`
-                    `${kvRow('CIM Session', device.CimSession)}`
-                    `${kvRow('Uptime', device.Uptime)}`
-                    `${kvRow('Operating System', (device.OS || '') + ' ' + (device.Version || '').trim())}`
+                    ${kvRow('Computer Name', device.ComputerName)}
+                    ${kvRow('Logged On User', device.LoggedOnUser)}
+                    ${kvRow('Reachable', device.Reachable)}
+                    ${kvRow('CIM Session', device.CimSession)}
+                    ${kvRow('Uptime', device.Uptime)}
+                    ${kvRow('Operating System', ((device.OS || '') + ' ' + (device.Version || '')).trim())}
                 </div>
             </div>
         `
@@ -1039,15 +1039,15 @@ document.getElementById('panelSubtext').textContent = `${device.OS || 'Unknown O
         'Hardware',
         'System identity and physical resources',
         `
-            `${detailCard('Manufacturer', device.Manufacturer)}`
-            `${detailCard('Model', device.Model)}`
-            `${detailCard('Serial Number', device.SerialNumber)}`
-            `${detailCard('Architecture', device.Architecture)}`
-            `${detailCard('CPU', device.CPU, true)}`
-            `${detailCard('RAM (GB)', device.RAMGB)}`
-            `${detailCard('C: Total (GB)', device.DiskC_TotalGB)}`
-            `${detailCard('C: Free (GB)', device.DiskC_FreeGB)}`
-            `${detailCard('C: Free %', device.DiskC_FreePercent)}`
+            ${detailCard('Manufacturer', device.Manufacturer)}
+            ${detailCard('Model', device.Model)}
+            ${detailCard('Serial Number', device.SerialNumber)}
+            ${detailCard('Architecture', device.Architecture)}
+            ${detailCard('CPU', device.CPU, true)}
+            ${detailCard('RAM (GB)', device.RAMGB)}
+            ${detailCard('C: Total (GB)', device.DiskC_TotalGB)}
+            ${detailCard('C: Free (GB)', device.DiskC_FreeGB)}
+            ${detailCard('C: Free %', device.DiskC_FreePercent)}
         `
     );
 
@@ -1056,12 +1056,12 @@ document.getElementById('panelSubtext').textContent = `${device.OS || 'Unknown O
         'Security',
         'Protection state and exposure checks',
         `
-            `${detailCard('Health State', device.HealthStatus)}`
-            `${detailCard('Health Issues', device.HealthIssues, true)}`
-            `${detailCard('Antivirus', device.Antivirus, true)}`
-            `${detailCard('Defender Realtime', device.DefenderRealtime)}`
-            `${detailCard('Installed Software Count', device.InstalledSoftwareCount)}`
-            `${detailCard('Collection Error', device.Error || 'None', true)}`
+            ${detailCard('Health State', device.HealthStatus)}
+            ${detailCard('Health Issues', device.HealthIssues, true)}
+            ${detailCard('Antivirus', device.Antivirus, true)}
+            ${detailCard('Defender Realtime', device.DefenderRealtime)}
+            ${detailCard('Installed Software Count', device.InstalledSoftwareCount)}
+            ${detailCard('Collection Error', device.Error || 'None', true)}
         `
     );
 
@@ -1070,10 +1070,10 @@ document.getElementById('panelSubtext').textContent = `${device.OS || 'Unknown O
         'Patching',
         'Update visibility and reboot indicators',
         `
-            `${detailCard('Last Hotfix ID', device.LastHotfixId)}`
-            `${detailCard('Last Hotfix Date', device.LastHotfixDate)}`
-            `${detailCard('Pending Reboot Signals', device.PendingRebootSignals)}`
-            `${detailCard('Build Number', device.BuildNumber)}`
+            ${detailCard('Last Hotfix ID', device.LastHotfixId)}
+            ${detailCard('Last Hotfix Date', device.LastHotfixDate)}
+            ${detailCard('Pending Reboot Signals', device.PendingRebootSignals)}
+            ${detailCard('Build Number', device.BuildNumber)}
         `
     );
 
@@ -1082,34 +1082,34 @@ document.getElementById('panelSubtext').textContent = `${device.OS || 'Unknown O
         'Connectivity',
         'Network addressing and remote access exposure',
         `
-            `${detailCard('IPv4', device.IPv4, true)}`
-            `${detailCard('RDP Open', device.RdpOpen)}`
-            `${detailCard('WinRM Open', device.WinRMOpen)}`
-            `${detailCard('Last Boot Time', device.LastBoot, true)}`
+            ${detailCard('IPv4', device.IPv4, true)}
+            ${detailCard('RDP Open', device.RdpOpen)}
+            ${detailCard('WinRM Open', device.WinRMOpen)}
+            ${detailCard('Last Boot Time', device.LastBoot, true)}
         `
     );
 
     const content = `
-        <section class="section-card health-overview `${healthClass}`">
+        <section class="section-card health-overview ${healthClass}">
             <div class="section-header">
                 <div>
                     <div class="section-title">Health Overview</div>
                     <div class="section-subtitle">Immediate status and issue summary</div>
                 </div>
-                <div>`${healthBadge}`</div>
+                <div>${healthBadge}</div>
             </div>
             <div class="section-content">
                 <div class="detail-card full">
                     <div class="detail-label">Current Condition</div>
-                    <div class="detail-value">`${esc(device.HealthIssues)}`</div>
+                    <div class="detail-value">${esc(device.HealthIssues)}</div>
                 </div>
             </div>
         </section>
-        `${overviewSection}`
-        `${hardwareSection}`
-        `${securitySection}`
-        `${patchingSection}`
-        `${connectivitySection}`
+        ${overviewSection}
+        ${hardwareSection}
+        ${securitySection}
+        ${patchingSection}
+        ${connectivitySection}
     `;
 
     document.getElementById('panelContent').innerHTML = content;
@@ -1188,11 +1188,11 @@ function copyVisibleTable() {
 }
 
 function downloadCsv() {
-    downloadBlob(rowsToCsv(filteredData), '$CsvFileName', 'text/csv;charset=utf-8;');
+    downloadBlob(rowsToCsv(filteredData), '__CSV_FILE__', 'text/csv;charset=utf-8;');
 }
 
 function downloadJson() {
-    downloadBlob(JSON.stringify(filteredData, null, 2), '$JsonFileName', 'application/json;charset=utf-8;');
+    downloadBlob(JSON.stringify(filteredData, null, 2), '__JSON_FILE__', 'application/json;charset=utf-8;');
 }
 
 function downloadExcel() {
@@ -1202,26 +1202,44 @@ function downloadExcel() {
         'LastHotfixDate','PendingRebootSignals','InstalledSoftwareCount','RdpOpen','WinRMOpen','Manufacturer','Model','SerialNumber','Error'
     ];
 
-    let tableRows = filteredData.map(row => '<tr>' + headers.map(h => `<td>`${esc(row[h])}`</td>`).join('') + '</tr>').join('');
-    let html = `
-        <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+    const tableRows = filteredData
+        .map(row => '<tr>' + headers.map(h => `<td>${esc(row[h])}</td>`).join('') + '</tr>')
+        .join('');
+
+    const html = `
+        <html xmlns:o="urn:schemas-microsoft-com:office:office"
+              xmlns:x="urn:schemas-microsoft-com:office:excel"
+              xmlns="http://www.w3.org/TR/REC-html40">
         <head><meta charset="UTF-8"></head>
         <body>
             <table border="1">
-                <tr>`${headers.map(h => `<th>`${h}`</th>`).join('')}`</tr>
-                `${tableRows}`
+                <tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr>
+                ${tableRows}
             </table>
         </body>
         </html>`;
 
-    downloadBlob(html, '$ExcelFileName', 'application/vnd.ms-excel;charset=utf-8;');
+    downloadBlob(html, '__EXCEL_FILE__', 'application/vnd.ms-excel;charset=utf-8;');
 }
 
 applyFilters();
 </script>
 </body>
 </html>
-"@
+'@
+
+    $html = $html.Replace('__TITLE__', $Title)
+    $html = $html.Replace('__GENERATED__', $generated)
+    $html = $html.Replace('__TOTAL__', [string]$total)
+    $html = $html.Replace('__HEALTHY__', [string]$healthy)
+    $html = $html.Replace('__WARNING__', [string]$warning)
+    $html = $html.Replace('__ATTENTION__', [string]$attention)
+    $html = $html.Replace('__JSON_DATA__', $jsonEscaped)
+    $html = $html.Replace('__CSV_FILE__', $CsvFileName)
+    $html = $html.Replace('__JSON_FILE__', $JsonFileName)
+    $html = $html.Replace('__EXCEL_FILE__', $ExcelFileName)
+
+    return $html
 }
 
 Ensure-OutputDir -Path $OutputDir
@@ -1254,11 +1272,11 @@ if ($ExportHtml) {
     $excelName  = "inventory_$stamp.xls"
 
     $html = ConvertTo-PrettyHtmlReport `
-    -Data $results `
-    -Title 'Argus Insight' `
-    -CsvFileName $csvName `
-    -JsonFileName $jsonName `
-    -ExcelFileName $excelName
+        -Data $results `
+        -Title 'Argus Insight' `
+        -CsvFileName $csvName `
+        -JsonFileName $jsonName `
+        -ExcelFileName $excelName
 
     Set-Content -Path $htmlPath -Value $html -Encoding UTF8
 }
