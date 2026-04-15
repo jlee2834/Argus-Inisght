@@ -1255,7 +1255,7 @@ if ($ExportHtml) {
 
     $html = ConvertTo-PrettyHtmlReport `
     -Data $results `
-    -Title 'Inventory Checker' `
+    -Title 'Argus Insight' `
     -CsvFileName $csvName `
     -JsonFileName $jsonName `
     -ExcelFileName $excelName
