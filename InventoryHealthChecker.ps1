@@ -1226,7 +1226,7 @@ applyFilters();
 
 Ensure-OutputDir -Path $OutputDir
 $targets = Resolve-ComputerList -Names $ComputerName -File $InputFile
-if (-not $targets -or $targets.Count -eq 0) {
+if (-not $targets -or @($targets).Count -eq 0) {
     throw 'No computer names were supplied.'
 }
 
