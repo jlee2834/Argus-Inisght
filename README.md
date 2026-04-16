@@ -256,19 +256,8 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 ## 📝 Output Examples
 
 ```
-Collecting from PC-001 ...
-Collecting from PC-002 ...
-Collecting from SERVER-01 ...
+<img width="3840" height="2052" alt="Screenshot 2026-04-16 144205" src="https://github.com/user-attachments/assets/584fb995-c322-4036-b7da-5738945e931b" />
 
-ComputerName OS                     Uptime       HealthStatus DiskC_FreePercent
------------- --                     ------       ------------ -----------
-PC-001       Windows 10 Enterprise  45d 3h 22m   Healthy      68.5
-PC-002       Windows 10 Pro         2d 14h 8m    Warning      18.3
-SERVER-01    Windows Server 2019    128d 5h 47m  Needs Atten… 9.8
-
-Generated HTML report in memory
-Saved HTML: .\output\inventory_20260416_142530.html
-Note: CSV/JSON/Excel files are generated on-demand via HTML buttons
 ```
 
 ## 🎓 Tips & Best Practices
