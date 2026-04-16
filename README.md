@@ -253,12 +253,6 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 ### Defender status showing "Unavailable"
 **Solution**: Ensure WinRM is enabled and user has permissions to query security info.
 
-## 📝 Output Examples
-
-```
-<img width="3840" height="2052" alt="Screenshot 2026-04-16 144205" src="https://github.com/user-attachments/assets/584fb995-c322-4036-b7da-5738945e931b" />
-
-```
 
 ## 🎓 Tips & Best Practices
 
