@@ -2,6 +2,7 @@ param(
     [string[]]$ComputerName = @($env:COMPUTERNAME),
     [string]$InputFile,
     [string]$OutputDir = ".\output",
+    [string]$LogoUrl = "",
     [switch]$ExportHtml = $true,
     [switch]$OpenReport = $true,
     [switch]$SkipHotfixes,
@@ -326,10 +327,11 @@ function ConvertTo-PrettyHtmlReport {
         [Parameter(Mandatory)][string]$Title,
         [Parameter(Mandatory)][string]$CsvFileName,
         [Parameter(Mandatory)][string]$JsonFileName,
-        [Parameter(Mandatory)][string]$ExcelFileName
+        [Parameter(Mandatory)][string]$ExcelFileName,
+        [string]$LogoUrl = ""
     )
 
-    $json        = $Data | ConvertTo-Json -Depth 6 -Compress
+    $json        = @($Data) | ConvertTo-Json -Depth 6 -Compress
     $jsonEscaped = $json.Replace('</script>', '<\/script>')
     $generated   = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
     $total       = @($Data).Count
@@ -375,6 +377,8 @@ function ConvertTo-PrettyHtmlReport {
         align-items: flex-start; gap: 16px;
         margin-bottom: 20px; flex-wrap: wrap;
     }
+    .logo { max-width: 50px; max-height: 50px; margin-right: 12px; }
+    .title { display: flex; align-items: flex-start; gap: 12px; }
     .title h1 { margin: 0 0 8px 0; font-size: 30px; }
     .title p  { margin: 0; color: var(--muted); }
     .actions  { display: flex; gap: 10px; flex-wrap: wrap; }
@@ -525,8 +529,11 @@ function ConvertTo-PrettyHtmlReport {
 <div class="wrap">
     <div class="topbar">
         <div class="title">
-            <h1>__TITLE__</h1>
-            <p>Generated: __GENERATED__</p>
+            <img id="headerLogo" src="__LOGO_URL__" alt="Logo" class="logo" style="display: none;">
+            <div>
+                <h1>__TITLE__</h1>
+                <p>Generated: __GENERATED__</p>
+            </div>
         </div>
         <div class="actions">
             <button onclick="copyVisibleTable()">Copy visible table</button>
@@ -641,7 +648,17 @@ function ConvertTo-PrettyHtmlReport {
 </div>
 
 <script>
-const rawData = __JSON_DATA__;
+// Show logo only if a usable URL was injected
+(function() {
+    const logoEl = document.getElementById('headerLogo');
+    const rawLogo = 'https://imgur.com/a/aBYVB2Y';
+    if (logoEl && rawLogo && rawLogo.trim() !== '') {
+        logoEl.style.display = 'block';
+    }
+})();
+
+const rawDataSource = __JSON_DATA__;
+const rawData = Array.isArray(rawDataSource) ? rawDataSource : [rawDataSource];
 let filteredData = [...rawData];
 let selectedDevice = null;
 let sortCol = null;
@@ -968,8 +985,15 @@ function copyVisibleTable() {
         .catch(function() { toast('Clipboard copy failed.'); });
 }
 
-function downloadCsv()  { downloadBlob(rowsToCsv(filteredData), '__CSV_FILE__', 'text/csv;charset=utf-8;'); }
-function downloadJson() { downloadBlob(JSON.stringify(filteredData, null, 2), '__JSON_FILE__', 'application/json;charset=utf-8;'); }
+function downloadCsv()  { 
+    downloadBlob(rowsToCsv(filteredData), '__CSV_FILE__', 'text/csv;charset=utf-8;');
+    toast('CSV file exported successfully.');
+}
+
+function downloadJson() { 
+    downloadBlob(JSON.stringify(filteredData, null, 2), '__JSON_FILE__', 'application/json;charset=utf-8;');
+    toast('JSON file exported successfully.');
+}
 
 function downloadExcel() {
     var rows = filteredData.map(function(r) {
@@ -981,6 +1005,7 @@ function downloadExcel() {
         '<tr>' + EXPORT_HEADERS.map(function(h) { return '<th>' + h + '</th>'; }).join('') + '</tr>' +
         rows + '</table></body></html>';
     downloadBlob(html, '__EXCEL_FILE__', 'application/vnd.ms-excel;charset=utf-8;');
+    toast('Excel file exported successfully.');
 }
 
 applyFilters();
@@ -999,6 +1024,7 @@ applyFilters();
     $html = $html -replace '__CSV_FILE__',   $CsvFileName
     $html = $html -replace '__JSON_FILE__',  $JsonFileName
     $html = $html -replace '__EXCEL_FILE__', $ExcelFileName
+    $html = $html -replace '__LOGO_URL__',   $LogoUrl
 
     return $html
 }
@@ -1022,16 +1048,12 @@ foreach ($target in $targets) {
 }
 
 $results  = $results | Sort-Object HealthStatus, ComputerName
-$csvPath  = Join-Path $OutputDir "inventory_$stamp.csv"
-$jsonPath = Join-Path $OutputDir "inventory_$stamp.json"
-$results | Export-Csv -Path $csvPath -NoTypeInformation -Encoding UTF8
-$results | ConvertTo-Json -Depth 6 | Out-File -FilePath $jsonPath -Encoding utf8
 
 $htmlPath = $null
 if ($ExportHtml) {
     $htmlPath  = Join-Path $OutputDir "inventory_$stamp.html"
-    $csvName   = [System.IO.Path]::GetFileName($csvPath)
-    $jsonName  = [System.IO.Path]::GetFileName($jsonPath)
+    $csvName   = "inventory_$stamp.csv"
+    $jsonName  = "inventory_$stamp.json"
     $excelName = "inventory_$stamp.xls"
 
     $html = ConvertTo-PrettyHtmlReport `
@@ -1039,15 +1061,16 @@ if ($ExportHtml) {
         -Title         'Argus Insight' `
         -CsvFileName   $csvName `
         -JsonFileName  $jsonName `
-        -ExcelFileName $excelName
+        -ExcelFileName $excelName `
+        -LogoUrl       $LogoUrl
 
     Set-Content -Path $htmlPath -Value $html -Encoding UTF8
 }
 
 $results | Format-Table -AutoSize
-Write-Host "`nSaved CSV:  $csvPath"  -ForegroundColor Green
-Write-Host "Saved JSON: $jsonPath"  -ForegroundColor Green
+Write-Host "`nGenerated HTML report in memory" -ForegroundColor Green
 if ($htmlPath) {
     Write-Host "Saved HTML: $htmlPath" -ForegroundColor Green
+    Write-Host "Note: CSV/JSON/Excel files are generated on-demand via HTML buttons" -ForegroundColor Cyan
     if ($OpenReport) { Start-Process $htmlPath }
 }
